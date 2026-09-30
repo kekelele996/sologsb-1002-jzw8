@@ -95,6 +95,33 @@ kbd { padding: 1px 4px; border: 1px solid #706158; border-radius: 3px; color: #f
 .composer { display: grid; gap: 8px; }
 .composer label { margin-top: 5px; color: #695e55; font-size: 11px; font-weight: 700; }
 .app-footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; color: #a99d92; background: #29241f; font-size: 10px; }
+
+/* 投审系统对账 */
+.reconcile-status { display: grid; gap: 10px; margin-bottom: 14px; }
+.reconcile-status .ant-alert { padding: 8px 12px; }
+.reconcile-status .ant-alert-message { font-size: 12px; }
+.round-list { display: grid; gap: 12px; }
+.round-card { border-color: #e2dbd3; background: #fffefa; box-shadow: 0 3px 12px rgba(64,53,43,.04); }
+.round-card > .ant-card-head { min-height: 40px; padding: 0 12px; }
+.round-card > .ant-card-head .ant-card-head-title { font-size: 12px; }
+.round-card > .ant-card-body { padding: 12px; }
+.round-card.mismatch { border-color: #e3a72f; box-shadow: 0 0 0 2px rgba(227,167,47,.14); }
+.round-card.pending { border-style: dashed; }
+.opinion-block { margin-bottom: 9px; }
+.opinion-block small, .workbench-comments small { display: block; margin-bottom: 5px; color: #97897c; font-size: 10px; font-weight: 700; }
+.opinion-item { padding: 6px 9px; margin-bottom: 5px; border-radius: 6px; background: #f6f2ec; }
+.opinion-item b { margin-right: 8px; color: #7b3f2f; font-size: 11px; }
+.opinion-item span { color: #a29488; font-size: 10px; }
+.opinion-item p { margin: 3px 0 0; color: #4d4640; font-size: 11px; line-height: 1.6; }
+.workbench-comments { margin-bottom: 9px; }
+.workbench-comments .ant-tag { margin-bottom: 4px; font-size: 10px; }
+.comments-cleared { color: #6f9c7e; font-size: 10px; }
+.mismatch-block { display: grid; gap: 6px; margin-top: 8px; }
+.mismatch-block .ant-alert { padding: 6px 10px; }
+.mismatch-block .ant-alert-message { font-size: 11px; }
+.mismatch-block .ant-alert-description { font-size: 11px; }
+.mismatch-block .ant-btn { margin-top: 2px; }
+.deadline-overdue { color: #bd5c53; font-weight: 700; }
 @media (max-width: 1220px) {
   .workspace { grid-template-columns: 210px minmax(540px, 1fr) 352px; }
   .comments-panel > .keyboard-hint { width: 352px; }

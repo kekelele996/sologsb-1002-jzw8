@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  ArrowLeftOutlined, ArrowRightOutlined, BranchesOutlined, CheckOutlined, CloseOutlined,
+  ArrowLeftOutlined, ArrowRightOutlined, BranchesOutlined, CheckOutlined, CheckCircleOutlined, CloseOutlined,
   CommentOutlined, DiffOutlined, DeleteOutlined, FileDoneOutlined, FileTextOutlined,
   HistoryOutlined, LockOutlined, MenuFoldOutlined, MessageOutlined, PlusOutlined,
-  RedoOutlined, SaveOutlined, SendOutlined, SwapOutlined, UndoOutlined, UnlockOutlined, UserSwitchOutlined,
+  RedoOutlined, SaveOutlined, SendOutlined, SwapOutlined, SyncOutlined, UndoOutlined, UnlockOutlined, UserSwitchOutlined,
 } from '@ant-design/icons'
-import { Alert, Badge, Button, Card, Checkbox, Divider, Empty, Input, Modal, Radio, Segmented, Select, Space, Tag, Tooltip, message } from 'antd'
+import { Alert, Badge, Button, Card, Checkbox, Divider, Empty, Input, Modal, Radio, Segmented, Select, Space, Switch, Tag, message } from 'antd'
 import { submitRemotePatch } from './services/mockApi'
-import { useReviewStore } from './store/review'
-import type { Comment, CommentType, Paragraph, Role } from './types'
+import { DECISION_LABEL, SUBMISSION_ID, useReviewStore } from './store/review'
+import type { Comment, CommentType, Paragraph, ReviewRound, Role, RoundEditorDisposition } from './types'
 
 const roleMeta: Record<Role, { label: string; description: string; color: string }> = {
   author: { label: '作者工作区', description: '编辑正文，逐条接受或拒绝修改建议', color: '#2f6f5e' },
@@ -17,12 +17,28 @@ const roleMeta: Record<Role, { label: string; description: string; color: string
 }
 const roleIcon = (role: Role) => role === 'author' ? <FileDoneOutlined /> : role === 'reviewer' ? <CommentOutlined /> : <BranchesOutlined />
 const formatDate = (value: number) => new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+const formatDeadline = (value: number | null) => value === null ? '未设定' : new Date(value).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+
+const decisionColor: Record<string, string> = {
+  major_revision: 'orange',
+  minor_revision: 'blue',
+  accept: 'green',
+  reject: 'red',
+  pending: 'default',
+}
+const syncMeta: Record<ReviewRound['syncState'], { label: string; color: string }> = {
+  synced: { label: '已同步', color: 'green' },
+  pending_push: { label: '未送达', color: 'orange' },
+  mismatch: { label: '对不上', color: 'red' },
+}
 
 export default function App() {
   const {
     role, paragraphs, comments, versions, selectedParagraphId, commentFilter, revisionMode, dirty, conflicts,
+    submissionId, rounds, systemAvailable, reconcileStatus, reconcileError, reconcileReport, lastReconcileAt,
     setRole, selectParagraph, setCommentFilter, setRevisionMode, updateParagraph, addComment, replyComment,
     resolveSuggestion, mergeComment, toggleLock, createVersion, addConflict, resolveConflict, dismissConflict,
+    reconcile, setSystemAvailable, acknowledgeRound, resolveRoundComments, addRound,
     undo, redo, save, resetDemo,
   } = useReviewStore()
   const [composerOpen, setComposerOpen] = useState(false)
@@ -35,6 +51,7 @@ export default function App() {
   const [versionA, setVersionA] = useState(versions[1]?.id ?? versions[0]?.id)
   const [versionB, setVersionB] = useState(versions[0]?.id)
   const [versionLabel, setVersionLabel] = useState('')
+  const [reconcileOpen, setReconcileOpen] = useState(false)
 
   const selected = paragraphs.find((paragraph) => paragraph.id === selectedParagraphId) ?? paragraphs[0]
   const sections = useMemo(() => Array.from(new Set(paragraphs.map((paragraph) => paragraph.section))), [paragraphs])
@@ -121,17 +138,37 @@ export default function App() {
   const comparedB = versions.find((version) => version.id === versionB)
   const comparedRows = comparedA && comparedB ? comparedA.paragraphs.map((paragraph, index) => ({ a: paragraph, b: comparedB.paragraphs[index] })) : []
 
+  const sortedRounds = useMemo(() => [...rounds].sort((a, b) => b.roundNumber - a.roundNumber), [rounds])
+  const mismatchCount = rounds.filter((round) => round.mismatches.length > 0).length
+  const pendingPushCount = rounds.filter((round) => round.syncState === 'pending_push').length
+  const roundsNeedingAttention = mismatchCount + pendingPushCount
+  const handleResolveRound = (roundId: string, disposition: RoundEditorDisposition) => {
+    const ok = resolveRoundComments(roundId, disposition)
+    if (!ok) {
+      message.warning('未找到下一轮可结转；请先登记新回合，或先与投审系统对账后再定夺')
+      return
+    }
+    message.success(disposition === 'carry_over' ? '未处理批注已结转至下一轮' : '已标记处理，该回合在工作台收口')
+  }
+  const handleAddRound = () => {
+    addRound()
+    message.success('已在工作台登记新回合，对账时补送到投审系统')
+  }
+
   return (
     <div className="review-app">
       <header className="app-header">
         <div className="paper-identity">
           <div className="paper-mark">CR</div>
-          <div><h1>学术论文协作审阅台</h1><p>Collaborative Research Review · MS-2026-0417</p></div>
+          <div><h1>学术论文协作审阅台</h1><p>Collaborative Research Review · {submissionId}</p></div>
         </div>
         <div className="role-switch">
           <Segmented block value={role} onChange={(value) => setRole(value as Role)} options={(Object.keys(roleMeta) as Role[]).map((item) => ({ label: <span>{roleIcon(item)} {roleMeta[item].label.replace('工作区', '')}</span>, value: item }))} />
         </div>
         <Space>
+          <Badge count={roundsNeedingAttention} size="small" offset={[-4, 4]}>
+            <Button icon={<SyncOutlined />} onClick={() => setReconcileOpen(true)}>对账</Button>
+          </Badge>
           <Badge dot={dirty}><Button icon={<SaveOutlined />} onClick={() => { save(); message.success('草稿已保存到浏览器') }}>保存</Button></Badge>
           <Button icon={<UndoOutlined />} disabled={!useReviewStore.getState().past.length} onClick={undo} />
           <Button icon={<RedoOutlined />} disabled={!useReviewStore.getState().future.length} onClick={redo} />
@@ -300,6 +337,129 @@ export default function App() {
               <div><span>{a.number}</span>{a.text}</div><div><span>{b?.number ?? '—'}</span>{b?.text ?? '段落已删除'}</div>
             </div>
           ))}
+        </div>
+      </Modal>
+
+      <Modal
+        title={<Space><SyncOutlined /> 投审系统对账 <Tag>{submissionId}</Tag></Space>}
+        open={reconcileOpen}
+        onCancel={() => setReconcileOpen(false)}
+        width={920}
+        footer={[
+          <Button key="close" onClick={() => setReconcileOpen(false)}>关闭</Button>,
+          role === 'editor' && <Button key="add" icon={<PlusOutlined />} onClick={handleAddRound}>登记新回合</Button>,
+          <Button key="reconcile" type="primary" icon={<SyncOutlined />} loading={reconcileStatus === 'working'} onClick={() => void reconcile()}>立即对账</Button>,
+        ]}
+      >
+        <div className="reconcile-status">
+          <Space wrap>
+            <Tag color={systemAvailable ? 'green' : 'red'}>{systemAvailable ? '投审系统正常' : '投审系统故障（模拟）'}</Tag>
+            <span>最近对账：{lastReconcileAt ? formatDate(lastReconcileAt) : '尚未对账'}</span>
+            <Switch
+              checked={systemAvailable}
+              onChange={setSystemAvailable}
+              checkedChildren="系统正常"
+              unCheckedChildren="模拟故障"
+            />
+          </Space>
+          {reconcileStatus === 'failed' && (
+            <Alert
+              type="error" showIcon
+              message={`对账失败：${reconcileError}`}
+              description="工作台草稿、正文与批注均未受影响；系统恢复后重试时只补送没有回执的回合，已有回执的回合不重发。"
+              action={<Button size="small" type="primary" icon={<SyncOutlined />} onClick={() => void reconcile()}>按工作台这侧重试</Button>}
+            />
+          )}
+          {reconcileStatus === 'succeeded' && reconcileReport && (
+            <Alert
+              type={reconcileReport.mismatchCount > 0 ? 'warning' : 'success'} showIcon
+              message={`对账完成：新增 ${reconcileReport.created} 个回合，更新 ${reconcileReport.updated} 个回合，补送 ${reconcileReport.pushed} 个回合，跳过已有回执 ${reconcileReport.skipped} 个${reconcileReport.mismatchCount > 0 ? `；圈出 ${reconcileReport.mismatchCount} 处不一致，请编辑定夺` : ''}`}
+            />
+          )}
+          {reconcileStatus === 'working' && <Alert type="info" showIcon message="正在与投审系统对账…" />}
+        </div>
+
+        <div className="round-list">
+          {sortedRounds.map((round) => {
+            const roundComments = comments.filter((comment) => comment.roundId === round.id)
+            const openComments = roundComments.filter((comment) => comment.status === 'open')
+            const mismatched = round.mismatches.length > 0
+            const overdue = round.deadline !== null && round.deadline < Date.now() && round.state === 'open'
+            return (
+              <Card
+                key={round.id}
+                size="small"
+                className={`round-card ${mismatched ? 'mismatch' : ''} ${round.syncState === 'pending_push' ? 'pending' : ''}`}
+                title={(
+                  <Space wrap>
+                    <span>第 {round.roundNumber} 轮</span>
+                    <Tag color={round.state === 'closed' ? 'default' : 'blue'}>{round.state === 'closed' ? '已结束' : '进行中'}</Tag>
+                    <Tag color={syncMeta[round.syncState].color}>{syncMeta[round.syncState].label}</Tag>
+                    {round.receiptId && <Tag icon={<CheckCircleOutlined />}>回执 {round.receiptId}</Tag>}
+                  </Space>
+                )}
+                extra={(
+                  <Space>
+                    <Tag color={decisionColor[round.decision]}>{DECISION_LABEL[round.decision]}</Tag>
+                    <span className={overdue ? 'deadline-overdue' : ''}>截止 {formatDeadline(round.deadline)}{overdue ? '（已逾期）' : ''}</span>
+                  </Space>
+                )}
+              >
+                {round.opinions.length > 0 && (
+                  <div className="opinion-block">
+                    <small>投审系统随附意见（{round.opinions.length}）</small>
+                    {round.opinions.map((opinion) => (
+                      <div key={opinion.id} className="opinion-item">
+                        <b>{opinion.reviewer}</b>
+                        <span>{formatDate(opinion.createdAt)}</span>
+                        <p>{opinion.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="workbench-comments">
+                  <small>工作台批注 {roundComments.length} 条 · 未处理 {openComments.length} 条</small>
+                  {openComments.map((comment) => (
+                    <Tag key={comment.id}>{comment.author}：{comment.quote.slice(0, 14) || comment.body.slice(0, 14)}</Tag>
+                  ))}
+                  {!openComments.length && roundComments.length > 0 && <span className="comments-cleared">本回合批注均已收口</span>}
+                </div>
+                {mismatched && (
+                  <div className="mismatch-block">
+                    {round.mismatches.map((mismatch, index) => {
+                      if (mismatch.type === 'decision') {
+                        return <Alert key={index} type="warning" showIcon message={`对不上：工作台记录为「${mismatch.localLabel}」，投审系统为「${mismatch.remoteLabel}」—— 已按投审系统为准更新`} />
+                      }
+                      if (mismatch.type === 'deadline') {
+                        return <Alert key={index} type="warning" showIcon message={`对不上：工作台截止时间 ${mismatch.localLabel}，投审系统 ${mismatch.remoteLabel}—— 已按投审系统为准更新`} />
+                      }
+                      return (
+                        <Alert
+                          key={index} type="error" showIcon
+                          message={`对不上：投审系统该轮已结束，工作台还压着 ${mismatch.openCount} 条未处理批注`}
+                          description={role === 'editor' ? (
+                            <Space>
+                              <Button size="small" type="primary" onClick={() => handleResolveRound(round.id, 'carry_over')}>结转下一轮</Button>
+                              <Button size="small" onClick={() => handleResolveRound(round.id, 'mark_handled')}>标记已处理</Button>
+                            </Space>
+                          ) : '请编辑定夺后处置'}
+                        />
+                      )
+                    })}
+                    {role === 'editor' && !round.mismatches.some((mismatch) => mismatch.type === 'open_comments') && (
+                      <Button size="small" onClick={() => acknowledgeRound(round.id)}>已知悉</Button>
+                    )}
+                  </div>
+                )}
+                {round.syncState === 'pending_push' && (
+                  <Alert type="info" showIcon message="该回合仅存在于工作台，对账时补送到投审系统；同一回执不会重复出回合" />
+                )}
+                {round.editorDisposition && (
+                  <Tag color="purple">{round.editorDisposition === 'carry_over' ? '已定夺：未处理批注结转至下一轮' : '已定夺：标记已处理'}</Tag>
+                )}
+              </Card>
+            )
+          })}
         </div>
       </Modal>
 
