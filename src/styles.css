@@ -66,6 +66,7 @@ button, input, textarea { font: inherit; }
 .comment-card.accepted { border-left: 3px solid #3b8c67; }
 .comment-card.rejected { opacity: .65; border-left: 3px solid #bd5c53; }
 .comment-card.merged { opacity: .65; border-left: 3px solid #6b73b8; }
+.comment-card.closed { opacity: .6; border-left: 3px solid #9a9188; }
 .comment-card .ant-card-head { min-height: 37px; padding: 0 10px; }
 .comment-card .ant-card-head-title { font-size: 11px; }
 .comment-card .ant-card-extra small { font-size: 9px; }
@@ -94,6 +95,41 @@ kbd { padding: 1px 4px; border: 1px solid #706158; border-radius: 3px; color: #f
 .version-row.changed { background: #fff9ec; }
 .composer { display: grid; gap: 8px; }
 .composer label { margin-top: 5px; color: #695e55; font-size: 11px; font-weight: 700; }
+
+/* 投审对账台 */
+.recon-subtitle { margin-left: 8px; color: #a3968a; font-size: 11px; font-weight: 400; }
+.recon-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 6px 0 12px; padding: 12px 14px; border: 1px solid #e2dbd3; border-radius: 8px; background: #faf7f2; }
+.recon-identity { display: flex; align-items: flex-start; gap: 10px; }
+.recon-identity .ant-badge { margin-top: 5px; }
+.recon-identity b { color: #3c342e; font-size: 14px; letter-spacing: .02em; }
+.recon-identity p { margin: 3px 0 0; color: #8a7d72; font-size: 11px; }
+.recon-alert { margin-bottom: 12px; }
+.recon-list { display: grid; gap: 10px; max-height: 470px; overflow-y: auto; padding-right: 4px; }
+.recon-round { padding: 12px 14px; border: 1px solid #e2dbd3; border-radius: 8px; background: #fffefb; }
+.recon-round.has-mismatch { border-color: #d98b82; box-shadow: 0 0 0 2px rgba(204,92,83,.08); }
+.recon-round.needs-adj { border-left: 3px solid #c9813a; }
+.recon-round-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
+.recon-round-head b { margin-right: 6px; color: #4a3f37; font-family: Georgia, "Songti SC", serif; }
+.recon-round-head small { color: #a3968a; font-size: 9px; letter-spacing: .04em; }
+.recon-fields { display: grid; grid-template-columns: 1.1fr 1.3fr 1fr; gap: 10px; margin-bottom: 8px; }
+.recon-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid #ece5dc; border-radius: 6px; background: #f8f5ef; font-size: 11px; color: #5d534a; }
+.recon-field.mismatch { border-color: #dd9b93; background: #fdf3f2; }
+.recon-field-label { flex: 0 0 100%; color: #9a8c80; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.deadline-overdue { color: #c03f34; font-weight: 700; }
+.unresolved { color: #c9813a; }
+.mismatch-flag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 99px; color: #b33c32; background: #fbe3e0; font-size: 10px; font-weight: 600; cursor: help; }
+.recon-notes { display: grid; gap: 4px; margin: 4px 0 0; padding: 8px 10px; border-left: 3px solid #bd9361; border-radius: 0 6px 6px 0; background: #f5f0e9; list-style: none; }
+.recon-notes li { display: grid; grid-template-columns: 72px 1fr auto; gap: 8px; align-items: baseline; color: #5a5048; font-size: 11px; line-height: 1.5; }
+.recon-notes b { color: #7b3f2f; font-weight: 600; }
+.recon-notes small { color: #a3968a; font-size: 9px; }
+.recon-adj { margin-top: 10px; padding: 9px 11px; border: 1px dashed #d7a05f; border-radius: 7px; background: #fff8ee; }
+.recon-adj-title { margin-bottom: 7px; color: #a6631f; font-size: 11px; font-weight: 600; }
+.recon-adj-readonly { color: #97897c; font-size: 10px; }
+.recon-divider { margin: 12px 0 8px; }
+.recon-rule { margin: 0; color: #8a7d72; font-size: 10px; line-height: 1.6; }
+.recon-demo { margin-right: auto; }
+.recon-demo-label { color: #9a8c80; font-size: 10px; }
+.ant-modal .ant-modal-footer .recon-demo { float: left; }
 .app-footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; color: #a99d92; background: #29241f; font-size: 10px; }
 @media (max-width: 1220px) {
   .workspace { grid-template-columns: 210px minmax(540px, 1fr) 352px; }

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeftOutlined, ArrowRightOutlined, BranchesOutlined, CheckOutlined, CloseOutlined,
-  CommentOutlined, DiffOutlined, DeleteOutlined, FileDoneOutlined, FileTextOutlined,
+  CommentOutlined, DiffOutlined, DeleteOutlined, FileDoneOutlined, FileSyncOutlined, FileTextOutlined,
   HistoryOutlined, LockOutlined, MenuFoldOutlined, MessageOutlined, PlusOutlined,
   RedoOutlined, SaveOutlined, SendOutlined, SwapOutlined, UndoOutlined, UnlockOutlined, UserSwitchOutlined,
 } from '@ant-design/icons'
 import { Alert, Badge, Button, Card, Checkbox, Divider, Empty, Input, Modal, Radio, Segmented, Select, Space, Tag, Tooltip, message } from 'antd'
 import { submitRemotePatch } from './services/mockApi'
 import { useReviewStore } from './store/review'
+import ReconciliationPanel from './components/ReconciliationPanel'
 import type { Comment, CommentType, Paragraph, Role } from './types'
 
 const roleMeta: Record<Role, { label: string; description: string; color: string }> = {
@@ -20,12 +21,13 @@ const formatDate = (value: number) => new Date(value).toLocaleString('zh-CN', { 
 
 export default function App() {
   const {
-    role, paragraphs, comments, versions, selectedParagraphId, commentFilter, revisionMode, dirty, conflicts,
+    role, paragraphs, comments, versions, rounds, submission, selectedParagraphId, commentFilter, revisionMode, dirty, conflicts,
     setRole, selectParagraph, setCommentFilter, setRevisionMode, updateParagraph, addComment, replyComment,
     resolveSuggestion, mergeComment, toggleLock, createVersion, addConflict, resolveConflict, dismissConflict,
     undo, redo, save, resetDemo,
   } = useReviewStore()
   const [composerOpen, setComposerOpen] = useState(false)
+  const [reconOpen, setReconOpen] = useState(false)
   const [commentType, setCommentType] = useState<CommentType>('comment')
   const [commentBody, setCommentBody] = useState('')
   const [suggestion, setSuggestion] = useState('')
@@ -37,6 +39,14 @@ export default function App() {
   const [versionLabel, setVersionLabel] = useState('')
 
   const selected = paragraphs.find((paragraph) => paragraph.id === selectedParagraphId) ?? paragraphs[0]
+  const adjudicationCount = rounds.filter((round) => round.needsAdjudication).length
+  const reconBadge: { dot: boolean; status: 'success' | 'error' | 'default'; count?: number } = submission.status === 'degraded'
+    ? { dot: true, status: 'error' }
+    : adjudicationCount > 0
+      ? { dot: false, status: 'error', count: adjudicationCount }
+      : submission.status === 'synced'
+        ? { dot: true, status: 'success' }
+        : { dot: false, status: 'default' }
   const sections = useMemo(() => Array.from(new Set(paragraphs.map((paragraph) => paragraph.section))), [paragraphs])
   const paragraphCommentCounts = useMemo(() => comments.reduce<Record<string, number>>((acc, comment) => {
     acc[comment.paragraphId] = (acc[comment.paragraphId] ?? 0) + 1
@@ -59,6 +69,13 @@ export default function App() {
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [dirty])
+
+  // 进入工作台先按投稿编号与投审系统对一次账（只在从未对账成功时自动跑，失败由 store 内部重试并降级）
+  useEffect(() => {
+    if (useReviewStore.getState().submission.status === 'idle') {
+      void useReviewStore.getState().reconcileWithSubmission()
+    }
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -132,6 +149,13 @@ export default function App() {
           <Segmented block value={role} onChange={(value) => setRole(value as Role)} options={(Object.keys(roleMeta) as Role[]).map((item) => ({ label: <span>{roleIcon(item)} {roleMeta[item].label.replace('工作区', '')}</span>, value: item }))} />
         </div>
         <Space>
+          <Tooltip title={submission.status === 'degraded' ? '投审系统不可达：工作台优先，恢复后只补没送成的回合' : adjudicationCount > 0 ? `${adjudicationCount} 个已结束回合有待处理意见，等编辑定夺` : '按投稿编号与投审系统对账回合、决定与截止时间'}>
+            <Badge dot={reconBadge.dot} status={reconBadge.status} count={reconBadge.count} size="small">
+              <Button icon={<FileSyncOutlined />} danger={submission.status === 'degraded'} onClick={() => setReconOpen(true)}>
+                投审对账{submission.status === 'degraded' ? '（降级）' : adjudicationCount > 0 ? `（${adjudicationCount} 待定夺）` : ''}
+              </Button>
+            </Badge>
+          </Tooltip>
           <Badge dot={dirty}><Button icon={<SaveOutlined />} onClick={() => { save(); message.success('草稿已保存到浏览器') }}>保存</Button></Badge>
           <Button icon={<UndoOutlined />} disabled={!useReviewStore.getState().past.length} onClick={undo} />
           <Button icon={<RedoOutlined />} disabled={!useReviewStore.getState().future.length} onClick={redo} />
@@ -142,7 +166,7 @@ export default function App() {
       <div className="role-banner" style={{ '--role-color': roleMeta[role].color } as React.CSSProperties}>
         <span className="role-badge">{roleIcon(role)} {roleMeta[role].label}</span>
         <span>{roleMeta[role].description}</span>
-        <span className="paper-state"><FileTextOutlined /> 论文正文 v2.4</span>
+        <span className="paper-state"><FileTextOutlined /> 论文正文 v2.4 · 投稿编号 {submission.submissionId} · 已并入 {rounds.filter((round) => round.receiptId).length}/{rounds.length} 轮回执</span>
       </div>
 
       {conflicts.length > 0 && (
@@ -159,6 +183,27 @@ export default function App() {
               )}
             />
           ))}
+        </div>
+      )}
+
+      {submission.status === 'degraded' && (
+        <div className="conflict-stack">
+          <Alert
+            type="warning" showIcon icon={<FileSyncOutlined />}
+            message="投审对账失败：已按工作台这侧重试，当前工作台优先"
+            description="正文与批注照常处理，未对成账的回合已挂起；投审系统恢复后在“投审对账”里点立即重试，只补没送成的回合。"
+            action={<Button size="small" type="primary" onClick={() => setReconOpen(true)}>打开对账台</Button>}
+          />
+        </div>
+      )}
+      {adjudicationCount > 0 && submission.status !== 'degraded' && (
+        <div className="conflict-stack">
+          <Alert
+            type="info" showIcon icon={<FileSyncOutlined />}
+            message={`有 ${adjudicationCount} 个评审回合：投审系统已结束，工作台还压着未处理意见`}
+            description="这些回合需要编辑逐个定夺（继续处理 / 转入下一轮 / 随回合收口）。"
+            action={<Button size="small" type="primary" onClick={() => setReconOpen(true)}>{role === 'editor' ? '去定夺' : '查看'}</Button>}
+          />
         </div>
       )}
 
@@ -250,11 +295,11 @@ export default function App() {
             {visibleComments.map((comment) => {
               const paragraph = paragraphs.find((item) => item.id === comment.paragraphId)
               return (
-                <Card key={comment.id} size="small" className={`comment-card ${comment.status}`} title={<span>{comment.author} <Tag>{comment.type === 'suggestion' ? '修改建议' : '段落批注'}</Tag></span>} extra={<small>{formatDate(comment.createdAt)}</small>}>
+                <Card key={comment.id} size="small" className={`comment-card ${comment.status}`} title={<span>{comment.author} <Tag>{comment.type === 'suggestion' ? '修改建议' : '段落批注'}</Tag><Tag color="default">第 {comment.roundNo} 轮</Tag></span>} extra={<small>{formatDate(comment.createdAt)}</small>}>
                   <button className="quote-line" onClick={() => paragraph && scrollToParagraph(paragraph.id)}>“{comment.quote}” · 段落 {paragraph?.number}</button>
                   <p className="comment-body">{comment.body}</p>
                   {comment.suggestion && <div className="suggestion-box"><small>建议改为</small><p>{comment.suggestion}</p></div>}
-                  {comment.status !== 'open' && <Tag color={comment.status === 'accepted' ? 'green' : comment.status === 'rejected' ? 'red' : 'blue'}>{comment.status === 'accepted' ? '已接受' : comment.status === 'rejected' ? '已拒绝' : '已合并'}</Tag>}
+                  {comment.status !== 'open' && <Tag color={comment.status === 'accepted' ? 'green' : comment.status === 'rejected' ? 'red' : comment.status === 'merged' ? 'blue' : 'default'}>{comment.status === 'accepted' ? '已接受' : comment.status === 'rejected' ? '已拒绝' : comment.status === 'merged' ? '已合并' : '随回合关闭'}</Tag>}
                   <div className="replies">
                     {comment.replies.map((reply) => <div key={reply.id} className="reply"><b>{reply.author}</b><span>{reply.body}</span></div>)}
                   </div>
@@ -287,8 +332,9 @@ export default function App() {
         </div>
       </Modal>
 
-      <Modal title="版本比较" open={versionOpen} onCancel={() => setVersionOpen(false)} footer={null} width={980}>
-        <div className="compare-selectors">
+      <ReconciliationPanel open={reconOpen} onClose={() => setReconOpen(false)} />
+
+      <Modal title="版本比较" open={versionOpen} onCancel={() => setVersionOpen(false)} footer={null} width={980}>        <div className="compare-selectors">
           <Select value={versionA} onChange={setVersionA} options={versions.map((version) => ({ label: `${version.label} · ${formatDate(version.createdAt)}`, value: version.id }))} />
           <ArrowRightOutlined />
           <Select value={versionB} onChange={setVersionB} options={versions.map((version) => ({ label: `${version.label} · ${formatDate(version.createdAt)}`, value: version.id }))} />
